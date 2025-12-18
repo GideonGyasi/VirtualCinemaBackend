@@ -1,0 +1,129 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["public", "auth"]
+}
+
+// ==================== AUTH SCHEMA ====================
+
+// Users table
+model User {
+  id            String         @id @default(uuid())
+  name          String
+  email         String         @unique
+  password      String
+  photoURL      String?
+  role          Role           @default(USER)
+  premium       Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  refreshTokens RefreshToken[]
+
+  @@schema("auth")
+  @@map("users")
+}
+
+// User roles enum
+enum Role {
+  USER
+  HOST
+  ADMIN
+
+  @@schema("auth")
+}
+
+// ==================== PUBLIC SCHEMA ====================
+
+// Refresh tokens table
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@schema("public")
+  @@map("refresh_tokens")
+}
+
+// Rooms table
+model Room {
+  id                String           @id @default(uuid())
+  name              String?
+  movieId           String?
+  hostId            String?           // Current host user ID
+  coHostIds         String[]          @default([]) // Array of co-host user IDs
+  bannedUserIds     String[]          @default([]) // Array of banned user IDs
+  isLocked          Boolean           @default(false) // Room locked (no new joins)
+  isPrivate         Boolean           @default(false) // Private room (requires approval)
+  maxCapacity       Int?              // Maximum participants
+  chatEnabled       Boolean           @default(true) // Chat enabled/disabled
+  chatSlowMode      Int?              // Slow mode in seconds (null = disabled)
+  layout            String            @default("cinema") // Layout: cinema, chat-right, chat-below
+  playbackRate      Float             @default(1.0) // Current playback rate
+  currentTime       Float             @default(0.0) // Current video time
+  isPlaying         Boolean           @default(false) // Is video playing
+  playlist          Json?             // Movie playlist (array of movie objects)
+  subtitlesEnabled  Boolean           @default(false) // Subtitles enabled
+  subtitleLanguage  String?           // Subtitle language code
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  participants      RoomParticipant[]
+  messages          Message[]
+  joinRequests      JoinRequest[]     // Pending join requests for private rooms
+
+  @@schema("public")
+  @@map("rooms")
+}
+
+// Join requests for private rooms
+model JoinRequest {
+  id        String   @id @default(uuid())
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  roomId    String
+  userId    String
+  userName  String
+  status    String   @default("pending") // pending, approved, rejected
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([roomId, userId])
+  @@schema("public")
+  @@map("join_requests")
+}
+
+// Room participants table
+model RoomParticipant {
+  id        String   @id @default(uuid())
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  roomId    String
+  userId    String
+  joinedAt  DateTime @default(now())
+
+  @@unique([roomId, userId])
+  
+  @@schema("public")
+  @@map("room_participants")
+}
+
+// Messages table
+model Message {
+  id        String   @id @default(uuid())
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  roomId    String
+  userId    String
+  userName  String   // Store name for deleted users
+  content   String
+  isPinned  Boolean  @default(false) // Pinned message
+  isDeleted Boolean  @default(false) // Soft delete
+  createdAt DateTime @default(now())
+
+  @@schema("public")
+  @@map("messages")
+}
